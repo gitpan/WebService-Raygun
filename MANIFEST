@@ -4,6 +4,7 @@ MANIFEST
 META.yml
 Makefile.PL
 README
+README.md
 dist.ini
 lib/WebService/Raygun.pm
 lib/WebService/Raygun/Message.pm
