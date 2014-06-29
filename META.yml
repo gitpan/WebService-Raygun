@@ -3,6 +3,8 @@ abstract: 'Connect to the Raygun.io API'
 author:
   - 'Travis Holton <heytrav@cpan.org>'
 build_requires:
+  HTTP::Request: '0'
+  Moose: '0'
   Test::Class: '0'
   Test::Deep: '0'
   Test::Exception: '0'
@@ -23,7 +25,6 @@ requires:
   DateTime: '0'
   DateTime::Format::Strptime: '0'
   Filesys::DfPortable: '0'
-  HTTP::Request: '0'
   JSON: '0'
   LWP::UserAgent: '0'
   Mouse: '0'
@@ -33,4 +34,4 @@ requires:
   Sys::Info: '0'
   Sys::Info::OS: '0'
   URI: '0'
-version: '0.006'
+version: '0.007'

@@ -2,7 +2,6 @@ package WebService::Raygun::Message;
 
 use Mouse;
 
-
 =head1 NAME
 
 WebService::Raygun::Message - A message to be sent to raygun.io
@@ -90,14 +89,12 @@ This module assembles a request for raygun.io.
 
 use DateTime;
 use DateTime::Format::Strptime;
-use HTTP::Request;
 use POSIX ();
 
 use Mouse::Util::TypeConstraints;
 use WebService::Raygun::Message::Error;
 use WebService::Raygun::Message::Request;
 use WebService::Raygun::Message::Environment;
-
 
 subtype 'MessageError' => as 'Object' => where {
     $_->isa('WebService::Raygun::Message::Error');
@@ -115,6 +112,26 @@ subtype 'Environment' => as 'Object' => where {
     $_->isa('WebService::Raygun::Message::Environment');
 };
 
+subtype 'HttpRequest' => as 'Object' => where {
+    $_->isa('HTTP::Request');
+};
+
+subtype 'MojoliciousRequest' => as 'Object' => where {
+    $_->isa('Mojo::Message::Request');
+};
+
+subtype 'CatalystRequest' => as 'Object' => where {
+    $_->isa('Catalyst::Request');
+};
+
+subtype 'MooseException' => as 'Object' => where {
+    $_->isa('Moose::Exception');
+};
+
+subtype 'MojoException' => as 'Object' => where {
+    $_->isa('Mojo::Exception');
+};
+
 coerce 'OccurredOnDateTime' => from 'Str' => via {
     my $parser = DateTime::Format::Strptime->new(
         pattern   => '%FT%T%z',
@@ -127,34 +144,111 @@ coerce 'OccurredOnDateTime' => from 'Str' => via {
     return $parser->parse_datetime($_);
 };
 
-coerce 'Request' => from 'Object' => via {
-    if ($_->isa('HTTP::Request')) {
-        my @header_names = $_->header_field_names;
-        my $headers;
-        foreach my $header (@header_names) {
-            my $value = $_->header($header);
-            $headers->{$header} = $value;
-        }
-        my $query_string = $_->uri->query || '';
-
-        return WebService::Raygun::Message::Request->new(
-            url          => $_->uri->as_string,
-            method       => $_->method,
-            raw_data     => $_->as_string,
-            headers      => $headers,
-            http_method => $_->method,
-            query_string => $query_string,
-        );
+coerce 'Request' => from 'HttpRequest' => via {
+    my @header_names = $_->headers->header_field_names;
+    my $headers;
+    foreach my $header (@header_names) {
+        my $value = $_->header($header);
+        $headers->{$header} = $value;
     }
+    my $query_string = $_->uri->query || '';
+
+    return WebService::Raygun::Message::Request->new(
+        url          => $_->uri->as_string,
+        raw_data     => $_->as_string,
+        headers      => $headers,
+        http_method  => $_->method,
+        query_string => $query_string,
+    );
+} => from 'MojoliciousRequest' => via {
+    my $headers      = $_->headers->to_hash;
+    my $query_params = $_->query_params;
+    my $query_string = '';
+    if ( defined $query_params and $query_params->isa('Mojo::Parameters') ) {
+        $query_string = $query_params->to_string;
+    }
+    return WebService::Raygun::Message::Request->new(
+        url          => $_->url->to_abs->path,
+        http_method  => $_->method,
+        raw_data     => $_->get_body_chunk,
+        headers      => $headers,
+        query_string => $query_string
+    );
+} => from 'CatalystRequest' => via {
+
+    my @header_names = $_->headers->header_field_names;
+    my $headers;
+    foreach my $header (@header_names) {
+        my $value = $_->header($header);
+        $headers->{$header} = $value;
+    }
+    my $chunk;
+    $_->read_chunk( \$chunk, 4096 );
+    my $query_string = $_->uri->query || '';
+    return WebService::Raygun::Message::Request->new(
+        ip_address   => $_->address,
+        headers      => $headers,
+        http_method  => $_->method,
+        host_name    => $_->hostname,
+        raw_data     => $chunk,
+        query_string => $query_string,
+    );
 };
 
 coerce 'Environment' => from 'HashRef' => via {
-    # hope that all the arguments are correct.
-    return WebService::Raygun::Message::Environment->new(%{$_});
+    return WebService::Raygun::Message::Environment->new( %{$_} );
 };
 
 coerce 'MessageError' => from 'HashRef' => via {
-    return WebService::Raygun::Message::Error->new(%{$_});
+    return WebService::Raygun::Message::Error->new( %{$_} );
+} => from 'MooseException' => via {
+    my $trace       = $_->trace;
+    my $stack_trace = [];
+    while ( my $frame = $trace->next_frame ) {
+        push @{$stack_trace},
+          {
+            line_number => $frame->line,
+            class_name  => $frame->package,
+            file_name   => $frame->filename,
+            method_name => $frame->subroutine,
+          };
+    }
+    return WebService::Raygun::Message::Error->new(
+        class_name  => ( ref $_ ),
+        message     => $_->message,
+        stack_trace => $stack_trace,
+    );
+}
+=> from 'MojoException' => via {
+    # Very basic for now since I can't find docs on what the frames look like
+    # in Mojo::Exception.
+    my $stack_trace = [ { line_number => $_->line, } ];
+    return WebService::Raygun::Message::Error->new(
+        class_name  => ( ref $_ ),
+        message     => $_->message,
+        stack_trace => $stack_trace,
+    );
+}
+=> from 'Str' => via {
+    my $error_text = $_;
+    my $exception_regex = qr{
+        ^\s*(?<message> (?: (?! \sat\s [^\s]+ \s line).)*)
+        \sat\s(?<filename> (?: (?! \sline\s\d+).)* )
+        \sline\s(?<line>\d+)[^\d]*$
+    }xsm;
+    my ($message,$stack_trace);
+    while ($error_text =~ /$exception_regex/g ) {
+        $message = $+{message} unless $message;
+        push @{$stack_trace},
+          {
+            line_number => $+{line},
+            file_name   => $+{filename}
+          };
+    }
+    return WebService::Raygun::Message::Error->new(
+        stack_trace => $stack_trace,
+        message     => $message,
+    );
 };
 
 =head2 occurred_on
@@ -174,13 +268,14 @@ has occurred_on => (
 
 =head2 error
 
-See L<WebService::Raygun::Message::Error|WebService::Raygun::Message::Error>
+
+An instance of L<WebService::Raygun::Message::Error|WebService::Raygun::Message::Error>. I am using L<type constraints|Mouse::Util::TypeConstraints> to coerce objects of type L<Moose::Exception|Moose::Exception>, L<Mojo::Exception|Mojo::Exception>, and when possible string stack traces as needed.
 
 =cut
 
 has error => (
-    is  => 'rw',
-    isa => 'MessageError',
+    is     => 'rw',
+    isa    => 'MessageError',
     coerce => 1,
 );
 
@@ -205,13 +300,11 @@ See L<WebService::Raygun::Message::Request|WebService::Raygun::Message::Request>
 
 =cut
 
-
 has request => (
     is     => 'rw',
     isa    => 'Request',
     coerce => 1,
 );
-
 
 =head2 environment
 
@@ -222,9 +315,9 @@ See L<WebService::Raygun::Message::Environment|WebService::Raygun::Message::Envi
 =cut
 
 has environment => (
-    is	    => 'rw',
-    isa 	=> 'Environment',
-    coerce => 1,
+    is      => 'rw',
+    isa     => 'Environment',
+    coerce  => 1,
     default => sub {
         return {};
     }
@@ -236,10 +329,9 @@ has environment => (
 
 =cut
 
-
 has user_custom_data => (
-    is	    => 'rw',
-    isa 	=> 'HashRef',
+    is      => 'rw',
+    isa     => 'HashRef',
     default => sub {
         return {};
     },
@@ -250,15 +342,13 @@ has user_custom_data => (
 
 =cut
 
-
 has tags => (
-    is	    => 'rw',
-    isa 	=> 'ArrayRef',
+    is      => 'rw',
+    isa     => 'ArrayRef',
     default => sub {
         return [];
     },
 );
-
 
 =head2 client
 
@@ -266,8 +356,8 @@ has tags => (
 =cut
 
 has client => (
-    is	    => 'rw',
-    isa 	=> 'HashRef',
+    is      => 'rw',
+    isa     => 'HashRef',
     default => sub {
         return {};
     },
@@ -279,8 +369,8 @@ has client => (
 =cut
 
 has version => (
-    is	    => 'rw',
-    isa 	=> 'Str',
+    is      => 'rw',
+    isa     => 'Str',
     default => sub {
         return '0.1';
     },
@@ -292,13 +382,12 @@ has version => (
 =cut
 
 has machine_name => (
-    is	    => 'rw',
-    isa 	=> 'Str',
+    is      => 'rw',
+    isa     => 'Str',
     default => sub {
         return (POSIX::uname)[1];
     },
 );
-
 
 =head2 response_status_code
 
@@ -307,14 +396,12 @@ Default is 200.
 =cut
 
 has response_status_code => (
-    is	    => 'rw',
-    isa 	=> 'Int',
+    is      => 'rw',
+    isa     => 'Int',
     default => sub {
         return 200;
     },
 );
-
-
 
 =head2 prepare_raygun
 
@@ -331,15 +418,15 @@ sub prepare_raygun {
     my $occurred_on = $formatter->format_datetime( $self->occurred_on );
     my $data        = {
         occurredOn => $occurred_on,
-        details => {
+        details    => {
             userCustomData => $self->user_custom_data,
-            machineName => $self->machine_name,
-            error => $self->error->prepare_raygun,
-            version => $self->version,
-            client => $self->client,
-            request => $self->request->prepare_raygun,
-            environment => $self->environment->prepare_raygun,
-            user => {
+            machineName    => $self->machine_name,
+            error          => $self->error->prepare_raygun,
+            version        => $self->version,
+            client         => $self->client,
+            request        => $self->request->prepare_raygun,
+            environment    => $self->environment->prepare_raygun,
+            user           => {
                 identifier => $self->user
             },
             context => {

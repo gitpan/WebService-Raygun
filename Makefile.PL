@@ -23,7 +23,6 @@ my %WriteMakefileArgs = (
     "DateTime" => 0,
     "DateTime::Format::Strptime" => 0,
     "Filesys::DfPortable" => 0,
-    "HTTP::Request" => 0,
     "JSON" => 0,
     "LWP::UserAgent" => 0,
     "Mouse" => 0,
@@ -35,6 +34,8 @@ my %WriteMakefileArgs = (
     "URI" => 0
   },
   "TEST_REQUIRES" => {
+    "HTTP::Request" => 0,
+    "Moose" => 0,
     "Test::Class" => 0,
     "Test::Deep" => 0,
     "Test::Exception" => 0,
@@ -43,7 +44,7 @@ my %WriteMakefileArgs = (
     "strict" => 0,
     "warnings" => 0
   },
-  "VERSION" => "0.006",
+  "VERSION" => "0.007",
   "test" => {
     "TESTS" => "t/*.t"
   }
@@ -57,6 +58,7 @@ my %FallbackPrereqs = (
   "HTTP::Request" => 0,
   "JSON" => 0,
   "LWP::UserAgent" => 0,
+  "Moose" => 0,
   "Mouse" => 0,
   "Mouse::Util::TypeConstraints" => 0,
   "Mozilla::CA" => 0,
