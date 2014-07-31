@@ -1,5 +1,5 @@
 package WebService::Raygun;
-
+$WebService::Raygun::VERSION = '0.020';
 # VERSION
 
 =head1 NAME

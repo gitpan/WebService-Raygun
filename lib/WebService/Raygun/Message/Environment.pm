@@ -1,5 +1,5 @@
 package WebService::Raygun::Message::Environment;
-
+$WebService::Raygun::Message::Environment::VERSION = '0.020';
 use Mouse;
 
 =head1 NAME

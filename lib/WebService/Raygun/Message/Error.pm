@@ -1,5 +1,5 @@
 package WebService::Raygun::Message::Error;
-
+$WebService::Raygun::Message::Error::VERSION = '0.020';
 use Mouse;
 
 =head1 NAME
