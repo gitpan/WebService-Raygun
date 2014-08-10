@@ -1,5 +1,5 @@
 package WebService::Raygun::Messenger;
-$WebService::Raygun::Messenger::VERSION = '0.020';
+$WebService::Raygun::Messenger::VERSION = '0.021';
 use Mouse;
 
 #use Smart::Comments;

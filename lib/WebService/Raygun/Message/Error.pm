@@ -1,5 +1,5 @@
 package WebService::Raygun::Message::Error;
-$WebService::Raygun::Message::Error::VERSION = '0.020';
+$WebService::Raygun::Message::Error::VERSION = '0.021';
 use Mouse;
 
 =head1 NAME
@@ -40,6 +40,9 @@ subtype 'MooseObject' => as 'Object' => where {
         and $_->can('message')
         and $_->can('status_code')
         and $_->can('reason');
+};
+subtype 'CatalystException' => as 'Object' => where {
+    $_->isa('Catalyst::Exception');
 };
 
 coerce 'MessageError' => from 'HashRef' => via {
@@ -84,7 +87,22 @@ coerce 'MessageError' => from 'HashRef' => via {
         message     => $message,
         stack_trace => $stack_trace,
     );
-} => from 'ArrayRef[Str]' => via {
+} => from 'ArrayRef[CatalystException]' => via {
+    my $error_set = $_;
+    my $message;
+    my $stack_trace = [];
+    foreach my $error (@{$error_set}) {
+        $message = "$error" unless $message;
+        push @{$stack_trace}, {
+            line_number => 0,
+            class_name => 'Catalyst::Exception'
+        };
+    }
+    return WebService::Raygun::Message::Error->new(
+        message     => $message,
+        stack_trace => $stack_trace,
+    );
+}=> from 'ArrayRef[Str]' => via {
     my $error_text = join "\n" => @{$_};
     my ($message, $stack_trace) =
         @{ __PACKAGE__->_parse_exception_line($error_text) };
