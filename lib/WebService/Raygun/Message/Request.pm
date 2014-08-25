@@ -1,5 +1,5 @@
 package WebService::Raygun::Message::Request;
-$WebService::Raygun::Message::Request::VERSION = '0.021';
+$WebService::Raygun::Message::Request::VERSION = '0.022';
 use Mouse;
 use Mouse::Util::TypeConstraints;
 

@@ -1,5 +1,5 @@
 package WebService::Raygun::Message::Error::StackTrace;
-$WebService::Raygun::Message::Error::StackTrace::VERSION = '0.021';
+$WebService::Raygun::Message::Error::StackTrace::VERSION = '0.022';
 use Mouse;
 
 =head1 NAME
